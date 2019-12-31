@@ -40,7 +40,7 @@ check_depedency() {
 json_formatter() {
   local pipeinut
   read -r pipeinut
-  echo "$pipeinut" | jq '.[]'
+  echo "$pipeinut" | jq '.'
 }
 
 call_api() {
@@ -58,9 +58,9 @@ call_api() {
   # curl dry test --proxy localhost:8000 \ # test with nc -l localhost 8000
 
   if [[ ! -z $parameters ]]; then
-    url="$HOST/$Endpoint&$Parameters"
+    url="$HOST/$endpoint&$parameters"
   else
-    url="$HOST/$Endpoint"
+    url="$HOST/$endpoint"
   fi
 
   curl \
@@ -101,8 +101,7 @@ add_result() {
 # main features
 
 get_projects() {
-  call_api "GET index.php?/api/v2/get_projects" \
-  json_formatter
+  call_api "GET index.php?/api/v2/get_projects" | jq -jr '.[]|"\t",.id," ",.name,"\n"'
 }
 
 get_runs() {
@@ -112,8 +111,7 @@ get_runs() {
     exit 1
   fi
   
-  call_api "GET index.php?/api/v2/get_runs/$project_id" \
-  json_formatter
+  call_api "GET index.php?/api/v2/get_runs/$project_id" | jq -jr '.[]|"\t",.id," ",.name,"\n"'
 }
 
 assign_tests_to() {
@@ -176,15 +174,16 @@ check_variables
 
 case "$1" in
   list-project)
-    get_project
+    get_projects
     ;;
   list-runs)
     get_runs "${@:2}"
     ;;
-  assign-test)
+  assign-tests)
     assign_tests_to "${@:2}"
     ;;
   *)
+    echo -e "Actions: list-project, list-runs, assign-tests"
     echo -e "Help message coming soon.."
     exit
     ;;
