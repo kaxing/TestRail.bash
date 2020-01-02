@@ -38,10 +38,8 @@ check_depedency() {
 }
 
 json_formatter() {
-  local pipein
-  local bucket
-  bucket=$(while read pipein; do echo "$pipein"; done)
-  echo "$bucket" | jq -jr '.[]|"\t",.id," ",.name,"\n"'
+  local input="$@"
+  echo "$input" | jq -jr '.[]|"\t",.id," ",.name,"\n"'
 }
 
 call_api() {
@@ -102,8 +100,7 @@ add_result() {
 # main features
 
 get_projects() {
-  call_api "GET index.php?/api/v2/get_projects" \
-  | json_formatter
+  json_formatter "$(call_api "GET index.php?/api/v2/get_projects")"
 }
 
 get_runs() {
@@ -113,9 +110,10 @@ get_runs() {
     exit 1
   fi
   
-  call_api "GET index.php?/api/v2/get_runs/$project_id" \
-  | json_formatter
+  json_formatter "$(call_api "GET index.php?/api/v2/get_runs/$project_id")"
+
 }
+
 
 assign_tests_to() {
   local args=("$@")
