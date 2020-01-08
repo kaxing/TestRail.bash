@@ -11,7 +11,7 @@ check_variables() {
 
 HEADER="Content-Type: application/json"
 
-Exit_Code=0
+EXIT_CODE=0
 
 # major functions
 
@@ -21,7 +21,7 @@ pause() {
 }
 
 check_exit_status(){
-  if [[ "$Exit_Code" -gt "0" ]]; then
+  if [[ "$EXIT_CODE" -gt "0" ]]; then
     echo "$@"
     exit 1
   fi
@@ -31,7 +31,7 @@ check_depedency() {
   for command in "$@"; do
     if [[ ! -x "$(command -v $command)" ]]; then
       echo "Please install \`$command\`, thank you so much!"
-      let Exit_Code+=1
+      let EXIT_CODE+=1
     fi
   done
   check_exit_status "Error: dependencies are not met"
@@ -44,7 +44,7 @@ json_formatter() {
 
 call_api() {
 
-  local variables=($@)
+  local variables=("$@")
 
   local method="${variables[0]}"
   local endpoint="${variables[1]}"
@@ -54,7 +54,6 @@ call_api() {
   local url=""
 
   # TODO: check api parameters
-  # curl dry test --proxy localhost:8000 \ # test with nc -l localhost 8000
 
   if [[ ! -z $parameters ]]; then
     url="$HOST/$endpoint&$parameters"
@@ -62,27 +61,32 @@ call_api() {
     url="$HOST/$endpoint"
   fi
 
-  curl \
+  # Idea of redirect output via: https://superuser.com/a/862395
+  exec 3>&1
+  HTTP_STATUS="$( \
+    curl \
     --silent \
+    --write-out "%{http_code}" \
+    --output >(cat >&3) \
     --request "$method" \
     --header "$HEADER" \
     --user "$TOKEN" \
     --data "$data" \
-    "$url"
+    "$url")"
 }
 
 
 # minor functions
 
 get_user_id_from_json() {
-  list_of_user=$(call_api "GET index.php?/api/v2/get_users")
+  list_of_user=$(call_api "GET" "index.php?/api/v2/get_users")
   email="$@"
   echo "$(jq --arg email "$email" '.[]|select(.email==$email)| .id' <(echo $list_of_user))"
 }
 
 get_list_of_tests_from_run(){
   local run_id=$@
-  list_of_tests=$(call_api "GET index.php?/api/v2/get_tests/$run_id")
+  list_of_tests=$(call_api "GET" "index.php?/api/v2/get_tests/$run_id")
   list_of_testids=$(shuf <(jq '.[]|.id' <(echo $list_of_tests)))
   number_of_tests=$(echo "$list_of_testids"|wc -l)
   list_of_testids=($list_of_testids)
@@ -100,7 +104,7 @@ add_result() {
 # main features
 
 get_projects() {
-  json_formatter "$(call_api "GET index.php?/api/v2/get_projects")"
+  json_formatter "$(call_api "GET" "index.php?/api/v2/get_projects")"
 }
 
 get_runs() {
@@ -110,8 +114,46 @@ get_runs() {
     exit 1
   fi
   
-  json_formatter "$(call_api "GET index.php?/api/v2/get_runs/$project_id")"
+  json_formatter "$(call_api "GET" "index.php?/api/v2/get_runs/$project_id")"
 
+}
+
+add_run() {
+  local variables=("$@")
+  
+  local project_id="${variables[0]}"
+  local name="${variables[1]}"
+  local description="${variables[2]}"
+
+  if [[ ! "$project_id" =~ ^[0-9]+$ ]] || [[ "$project_id" -lt "1" ]] ; then
+    echo -e "Please give one valid project id."
+    exit 1
+  fi
+
+  if [[ -z "${variables[1]}" ]]; then
+    echo -e "Please assign name and description after project id,"
+    echo -e "in following format:"
+    echo -e " \t $(basename "$0") create-run $project_id \"A New Run\" \"and some description\""
+    exit 1
+  fi
+
+  local suite_id="$(call_api "GET" "index.php?/api/v2/get_suites/$project_id"|jq '.[]|.id')"
+  local data='{"suite_id":"'$suite_id'","name":"'$name'","description":"'$description'","include_all":true}'
+
+  call_api "POST" "index.php?/api/v2/add_run/$project_id" "$data"
+}
+
+delete_run() {
+  local run_id="$@"
+
+  if [[ ! "$run_id" =~ ^[0-9]+$ ]] || [[ "$run_id" -lt "1" ]] ; then
+    echo -e "Please give one valid project id."
+    exit 1
+  fi
+
+  call_api "POST" "index.php?/api/v2/delete_run/$run_id"
+
+  echo -e "$HTTP_STATUS"
 }
 
 
@@ -180,12 +222,19 @@ case "$1" in
   list-runs)
     get_runs "${@:2}"
     ;;
+  create-run)
+    add_run "${@:2}"
+    ;;
+  delete-run)
+    delete_run "${@:2}"
+    ;;
   assign-tests)
     assign_tests_to "${@:2}"
     ;;
   *)
-    echo -e "Actions: list-project, list-runs, assign-tests"
-    echo -e "Help message coming soon.."
+    echo -e "Actions:"
+    echo -e "\tlist-project, list-runs,\n\tcreate-run, delete-run,\n\tassign-tests"
+    echo -e "More detailed help messages are coming soon..."
     exit
     ;;
 esac
