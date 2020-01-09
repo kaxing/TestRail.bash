@@ -1,16 +1,16 @@
 # TestRail.bash
-a simple script to use TestRail APIs
+a simple script to access TestRail APIs.
 
 ### Requirement:
-  - bash 3.2.57 
+  - bash version 3.2.57 
   - curl
   - jq
 
 ### What does it do:
-Randomly assign tests to a list of testers. The remainders will be all assign to the last person, which is also random.
+It started with an idea to help test planner randomly assigning tests to a list of testers since TestRail web UI does not provide such a feature. TR.sh will evolve into a script that provides CLI ways to list, create and delete Project, Runs, and Tests through TestRails.
 
 ### Usage:
-$ HOST="https://where.testrail.com" TOKEN="email:secrets" test-assign $TESTRUN_ID one@email.com second@gmail.com 3rd@mail.com
+$ HOST="https://where.testrail.com" TOKEN="email:secrets" TR.sh
 
 ### Note:
-This begins as a practice for myself, and I hope to develop this script into a library, any suggestions to the feature and code logic are welcome!
+This script begins as a practice for myself, please feel free to give any suggestions to the feature and code logic.
