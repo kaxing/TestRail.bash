@@ -2,18 +2,20 @@
 
 set -e
 
+# key variables
+
+EXIT_CODE=0
+HEADER="Content-Type: application/json"
+API_PATH="index.php?/api/v2"
+
+# major functions
+
 check_variables() {
   if [[ -z "$TOKEN" ]] || [[ -z "$HOST" ]]; then
     echo "\$TOKEN or \$HOST is NULL, Please assign proper values!"
     exit 1
   fi
 }
-
-HEADER="Content-Type: application/json"
-
-EXIT_CODE=0
-
-# major functions
 
 pause() {
   echo -e "$@"
@@ -38,8 +40,16 @@ check_depedency() {
 }
 
 json_formatter() {
-  local input="$@"
-  echo "$input" | jq -jr '.[]|"\t",.id," ",.name,"\n"'
+  local input="${@:1:1}"
+  local format="${@:2:2}"
+
+  filter_default() { echo $input | jq -jr '.'; }
+  filter_id_name() { echo $input | jq -jr '.[]|"\t",.id," ",.name,"\n"'; }
+
+  case $format in
+   "id-name") filter_id_name;;
+   *) filter_default;;
+  esac
 }
 
 call_api() {
@@ -56,9 +66,9 @@ call_api() {
   # TODO: check api parameters
 
   if [[ ! -z $parameters ]]; then
-    url="$HOST/$endpoint&$parameters"
+    url="$HOST/$API_PATH/$endpoint&$parameters"
   else
-    url="$HOST/$endpoint"
+    url="$HOST/$API_PATH/$endpoint"
   fi
 
   # Idea of redirect output via: https://superuser.com/a/862395
@@ -79,14 +89,14 @@ call_api() {
 # minor functions
 
 get_user_id_from_json() {
-  list_of_user=$(call_api "GET" "index.php?/api/v2/get_users")
+  list_of_user=$(call_api "GET" "get_users")
   email="$@"
   echo "$(jq --arg email "$email" '.[]|select(.email==$email)| .id' <(echo $list_of_user))"
 }
 
 get_list_of_tests_from_run(){
   local run_id=$@
-  list_of_tests=$(call_api "GET" "index.php?/api/v2/get_tests/$run_id")
+  list_of_tests=$(call_api "GET" "get_tests/$run_id")
   list_of_testids=$(shuf <(jq '.[]|.id' <(echo $list_of_tests)))
   number_of_tests=$(echo "$list_of_testids"|wc -l)
   list_of_testids=($list_of_testids)
@@ -98,13 +108,13 @@ add_result() {
   local tester=${variables[1]}
   local data='{"test_id":"'$test'","assignedto_id":"'$tester'","comment":"Assign_through_API"}'
   test_id=$test # keep the name convention
-  call_api "POST index.php?/api/v2/add_result/$test_id $data"
+  call_api "POST" "add_result/$test_id $data"
 }
 
 # main features
 
 get_projects() {
-  json_formatter "$(call_api "GET" "index.php?/api/v2/get_projects")"
+  json_formatter "$(call_api "GET" "get_projects")" "id-name"
 }
 
 get_runs() {
@@ -114,8 +124,14 @@ get_runs() {
     exit 1
   fi
   
-  json_formatter "$(call_api "GET" "index.php?/api/v2/get_runs/$project_id")"
+  json_formatter "$(call_api "GET" "get_runs/$project_id")" "id-name"
+}
 
+get_cases() {
+  local project_id="$@"
+  local suite_id="$(call_api "GET" "get_suites/$project_id"|jq '.[]|.id')"
+  # &section_id=:section_id
+  json_formatter "$(call_api "GET" "get_cases/$project_id&suite_id=$suite_id")"
 }
 
 add_run() {
@@ -137,10 +153,10 @@ add_run() {
     exit 1
   fi
 
-  local suite_id="$(call_api "GET" "index.php?/api/v2/get_suites/$project_id"|jq '.[]|.id')"
+  local suite_id="$(call_api "GET" "get_suites/$project_id"|jq '.[]|.id')"
   local data='{"suite_id":"'$suite_id'","name":"'$name'","description":"'$description'","include_all":true}'
 
-  call_api "POST" "index.php?/api/v2/add_run/$project_id" "$data"
+  call_api "POST" "add_run/$project_id" "$data"
 }
 
 delete_run() {
@@ -151,7 +167,7 @@ delete_run() {
     exit 1
   fi
 
-  call_api "POST" "index.php?/api/v2/delete_run/$run_id"
+  call_api "POST" "delete_run/$run_id"
 
   echo -e "$HTTP_STATUS"
 }
@@ -169,7 +185,7 @@ assign_tests_to() {
   fi
 
   # quiccheck server status, avoid maintaince mode
-  api_server_status=$( curl --write-out "%{http_code}" --silent --output /dev/null --header "$HEADER" --request GET --user "$TOKEN" $HOST/index.php?/api/v2/get_project/1 )
+  api_server_status=$( curl --write-out "%{http_code}" --silent --output /dev/null --header "$HEADER" --request GET --user "$TOKEN" $HOST/$API_PATH/get_project/1 )
   if [ ! "$api_server_status" == "200" ]; then
     echo -e "Something wrong with API connection;\nPlease check Test Rail status."
     exit 1
@@ -213,6 +229,7 @@ assign_tests_to() {
 # scipt begin here
 
 check_depedency bash curl jq
+
 check_variables
 
 case "$1" in
@@ -221,6 +238,9 @@ case "$1" in
     ;;
   list-runs)
     get_runs "${@:2}"
+    ;;
+  list-cases)
+    get_cases "${@:2}"
     ;;
   create-run)
     add_run "${@:2}"
@@ -233,10 +253,8 @@ case "$1" in
     ;;
   *)
     echo -e "Actions:"
-    echo -e "\tlist-project, list-runs,\n\tcreate-run, delete-run,\n\tassign-tests"
-    echo -e "More detailed help messages are coming soon..."
+    echo -e "\tlist-project, list-runs, list-cases,\n\tcreate-run, delete-run,\n\tassign-tests"
+    echo -e "\tMore detailed help messages are coming soon..."
     exit
     ;;
 esac
-
-echo ""
